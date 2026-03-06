@@ -3,69 +3,136 @@ import { supabase } from '../supabaseClient';
 
 const AuthContext = createContext(null);
 
+// Utility: wrap any promise with a timeout so we never hang forever
+const withTimeout = (promise, ms, label = 'Operation') =>
+    Promise.race([
+        promise,
+        new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)
+        ),
+    ]);
+
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [profile, setProfile] = useState(null);
     const [session, setSession] = useState(null);
     const [loading, setLoading] = useState(true);
-    const skipAuthChange = useRef(false);
+    const isManualAuth = useRef(false);
 
-    // Fetch user profile from profiles table, with fallback to user metadata
+    // Build a fallback profile from Supabase user metadata
+    const buildFallbackProfile = (supaUser, overrides = {}) => {
+        const meta = supaUser.user_metadata || {};
+        return {
+            id: supaUser.id,
+            name: overrides.name || meta.name || supaUser.email?.split('@')[0] || 'User',
+            email: supaUser.email,
+            role: overrides.role || meta.role || 'hospital',
+            avatar: (overrides.name || meta.name || 'U').charAt(0).toUpperCase(),
+            hospital: null,
+            call_sign: null,
+            phone: null,
+        };
+    };
+
+    // Fetch user profile — single attempt with timeout, no retries (fast)
     const fetchProfile = async (supaUser) => {
         try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', supaUser.id)
-                .single();
+            const { data, error } = await withTimeout(
+                supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', supaUser.id)
+                    .single(),
+                5000,
+                'Profile fetch'
+            );
 
             if (!error && data) {
                 setProfile(data);
                 return data;
             }
         } catch (err) {
-            console.warn('Profile fetch failed, using metadata fallback:', err.message);
+            console.warn('Profile fetch failed:', err.message);
         }
 
-        // Fallback: build profile from Supabase user metadata
-        const meta = supaUser.user_metadata || {};
-        const fallback = {
-            id: supaUser.id,
-            name: meta.name || supaUser.email?.split('@')[0] || 'User',
-            email: supaUser.email,
-            role: meta.role || 'hospital',
-            avatar: (meta.name || 'U').charAt(0).toUpperCase(),
-            hospital: null,
-            call_sign: null,
-            phone: null,
-        };
+        // Fallback to user metadata
+        console.log('Using metadata fallback for profile');
+        const fallback = buildFallbackProfile(supaUser);
+        setProfile(fallback);
+        return fallback;
+    };
+
+    // Fetch profile with retries — used only during signup (DB trigger delay)
+    const fetchProfileWithRetry = async (supaUser, retries = 2) => {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const { data, error } = await withTimeout(
+                    supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', supaUser.id)
+                        .single(),
+                    4000,
+                    `Profile fetch (attempt ${attempt})`
+                );
+
+                if (!error && data) {
+                    setProfile(data);
+                    return data;
+                }
+
+                if (attempt < retries) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+            } catch (err) {
+                console.warn(`Profile fetch attempt ${attempt} failed:`, err.message);
+                if (attempt < retries) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+            }
+        }
+
+        // Fallback
+        const fallback = buildFallbackProfile(supaUser);
         setProfile(fallback);
         return fallback;
     };
 
     // Listen to auth state changes
     useEffect(() => {
+        let isMounted = true;
+
         // Get initial session
         supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+            if (!isMounted) return;
             setSession(currentSession);
             if (currentSession?.user) {
                 setUser(currentSession.user);
-                fetchProfile(currentSession.user).finally(() => setLoading(false));
+                fetchProfile(currentSession.user).finally(() => {
+                    if (isMounted) setLoading(false);
+                });
             } else {
                 setLoading(false);
             }
+        }).catch(() => {
+            if (isMounted) setLoading(false);
         });
 
         // Subscribe to auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, newSession) => {
-                // Skip if signup/login is handling this manually
-                if (skipAuthChange.current) return;
+            (event, newSession) => {
+                if (!isMounted) return;
 
                 setSession(newSession);
                 if (newSession?.user) {
                     setUser(newSession.user);
-                    await fetchProfile(newSession.user);
+                    // Skip profile fetch if login()/signup() is already handling it
+                    if (isManualAuth.current) {
+                        isManualAuth.current = false;
+                        return;
+                    }
+                    // Fire-and-forget profile fetch (don't await — prevents blocking)
+                    fetchProfile(newSession.user);
                 } else {
                     setUser(null);
                     setProfile(null);
@@ -73,65 +140,80 @@ export const AuthProvider = ({ children }) => {
             }
         );
 
-        return () => subscription.unsubscribe();
+        return () => {
+            isMounted = false;
+            subscription.unsubscribe();
+        };
     }, []);
 
-    // Sign Up — returns { role } on success, null if email confirmation needed
+    // Sign Up — returns { role } on auto-confirm, null if email confirmation needed
     const signup = async (email, password, name, role) => {
-        skipAuthChange.current = true; // prevent race condition
+        isManualAuth.current = true;
+
+        let data, error;
         try {
-            const { data, error } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: { name, role },
-                },
-            });
-            if (error) throw error;
-
-            // If email confirmation is disabled → session exists
-            if (data.session && data.user) {
-                setUser(data.user);
-                setSession(data.session);
-                // Build a quick profile from what we know
-                const quickProfile = {
-                    id: data.user.id,
-                    name: name,
-                    email: email,
-                    role: role,
-                    avatar: name.charAt(0).toUpperCase(),
-                    hospital: null,
-                    call_sign: null,
-                    phone: null,
-                };
-                setProfile(quickProfile);
-                return { role };
-            }
-
-            // Email confirmation enabled → no session
-            return null;
-        } finally {
-            skipAuthChange.current = false;
+            const result = await withTimeout(
+                supabase.auth.signUp({
+                    email,
+                    password,
+                    options: { data: { name, role } },
+                }),
+                10000,
+                'Signup'
+            );
+            data = result.data;
+            error = result.error;
+        } catch (err) {
+            isManualAuth.current = false;
+            throw err;
         }
+
+        if (error) {
+            isManualAuth.current = false;
+            throw error;
+        }
+
+        // If email confirmation is disabled → session exists immediately
+        if (data.session && data.user) {
+            setUser(data.user);
+            setSession(data.session);
+
+            const prof = await fetchProfileWithRetry(data.user, 2);
+            return { role: prof?.role || role };
+        }
+
+        // Email confirmation enabled → no session yet
+        isManualAuth.current = false;
+        return null;
     };
 
     // Sign In
     const login = async (email, password) => {
-        skipAuthChange.current = true;
-        try {
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
-            if (error) throw error;
+        isManualAuth.current = true;
 
-            setUser(data.user);
-            setSession(data.session);
-            const prof = await fetchProfile(data.user);
-            return prof;
-        } finally {
-            skipAuthChange.current = false;
+        let data, error;
+        try {
+            const result = await withTimeout(
+                supabase.auth.signInWithPassword({ email, password }),
+                10000,
+                'Login'
+            );
+            data = result.data;
+            error = result.error;
+        } catch (err) {
+            isManualAuth.current = false;
+            throw err;
         }
+
+        if (error) {
+            isManualAuth.current = false;
+            throw error;
+        }
+
+        setUser(data.user);
+        setSession(data.session);
+        const prof = await fetchProfile(data.user);
+        return prof;
     };
 
     // Sign Out

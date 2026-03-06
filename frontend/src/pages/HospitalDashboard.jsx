@@ -109,7 +109,7 @@ function Overview({ crashes, hospitals, ambulances, onRespond }) {
                             <Pie data={PIE_DATA} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" strokeWidth={0}>
                                 {PIE_DATA.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                             </Pie>
-                            <Tooltip contentStyle={{ background: '#0d1526', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: '#f1f5f9' }} />
+                            <Tooltip contentStyle={{ background: '#0d1526', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: '#f1f5f9' }} itemStyle={{ color: '#f1f5f9' }} labelStyle={{ color: '#94a3b8' }} />
                         </PieChart>
                     </ResponsiveContainer>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
@@ -284,7 +284,7 @@ function IncidentsPage({ crashes, onUpdateStatus }) {
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                     {['all', 'active', 'responding', 'resolved', 'high', 'medium', 'low'].map(f => (
-                        <button key={f} onClick={() => setFilter(f)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', textTransform: 'capitalize', transition: 'all 0.2s', background: filter === f ? (f === 'high' ? '#ef4444' : f === 'active' ? '#ef4444' : '#3b82f6') : 'rgba(255,255,255,0.04)', color: filter === f ? '#fff' : '#94a3b8', borderColor: filter === f ? 'transparent' : 'rgba(255,255,255,0.1)' }}>
+                        <button key={f} onClick={() => setFilter(f)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', textTransform: 'capitalize', transition: 'all 0.2s', background: filter === f ? (f === 'high' ? '#ef4444' : f === 'active' ? '#10b981' : '#3b82f6') : 'rgba(255,255,255,0.04)', color: filter === f ? '#fff' : '#94a3b8', borderColor: filter === f ? 'transparent' : 'rgba(255,255,255,0.1)' }}>
                             {f}
                         </button>
                     ))}

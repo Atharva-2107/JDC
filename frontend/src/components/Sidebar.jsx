@@ -39,7 +39,7 @@ export default function Sidebar({ role }) {
             <div className="sidebar-logo">
                 <div className="sidebar-logo-icon" style={{ fontSize: 20 }}>🛡️</div>
                 <div>
-                    <div className="sidebar-logo-text">CrashGuard</div>
+                    <div className="sidebar-logo-text">JDC</div>
                     <div className="sidebar-logo-sub">{role === 'hospital' ? 'Hospital Portal' : 'Ambulance Portal'}</div>
                 </div>
             </div>

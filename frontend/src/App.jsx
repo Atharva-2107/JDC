@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -6,13 +6,22 @@ import { SocketProvider } from './context/SocketContext';
 
 import Landing from './pages/Landing';
 import Login from './pages/Login';
+import Signup from './pages/Signup';
 import HospitalDashboard from './pages/HospitalDashboard';
 import AmbulanceDashboard from './pages/AmbulanceDashboard';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
+  const [timedOut, setTimedOut] = useState(false);
 
-  if (loading) {
+  // Safety timeout — if loading takes more than 5 seconds, stop waiting
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => setTimedOut(true), 5000);
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  if (loading && !timedOut) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#060b14' }}>
         <div className="spinner" />
@@ -28,11 +37,13 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
 const AppRoutes = () => {
   const { user } = useAuth();
+  const dashboardPath = user?.role === 'ambulance' ? '/ambulance' : '/hospital';
 
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      <Route path="/login" element={user ? <Navigate to={user.role === 'hospital' || user.role === 'admin' ? '/hospital' : '/ambulance'} /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={dashboardPath} replace /> : <Login />} />
+      <Route path="/signup" element={user ? <Navigate to={dashboardPath} replace /> : <Signup />} />
       <Route path="/hospital/*" element={
         <ProtectedRoute allowedRoles={['hospital', 'admin']}>
           <HospitalDashboard />
