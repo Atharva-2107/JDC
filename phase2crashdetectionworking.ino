@@ -1,4 +1,5 @@
 #include <Wire.h>
+#include "secrets.h"
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <TinyGPSPlus.h>
@@ -18,12 +19,6 @@
 // ─── SINGLE LED PIN ───────────────────────────────────────────────────────────
 #define PIN_LED 32  // ONLY LED2 at GPIO32 (220Ω to GND)
 
-// ─── Supabase Config ──────────────────────────────────────────────────────────
-// ⚠️ REPLACE THESE WITH YOUR VALUES ⚠️
-#define SUPABASE_URL "https://sjfdlxutbhjepcfcmdzn.supabase.co"
-#define SUPABASE_KEY "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqZmRseHV0YmhqZXBjZmNtZHpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2Nzg5OTAsImV4cCI6MjA4OTI1NDk5MH0.-xkvEfMXEKE9m4ewzeXz9XPEeHYpv4o8RhywCFd8EWk"
-#define WIFI_SSID "SimarHotSpot"
-#define WIFI_PASS "simar55555"
 
 // ─── Timing ───────────────────────────────────────────────────────────────────
 #define GPS_UPLOAD_INTERVAL 30000  // 30 seconds between uploads
