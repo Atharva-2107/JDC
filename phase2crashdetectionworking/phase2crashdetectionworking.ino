@@ -44,6 +44,48 @@ double gpsLng = 0.0;
 float gpsSpeedKmph = 0.0;
 String gpsTimeStr = "Unknown";
 
+
+// ─── Trigger n8n Webhook ─────────────────────────────────────────────────────
+void triggerN8N() {
+  if (!wifiConnected) {
+    Serial.println("⚠️  n8n: No WiFi");
+    return;
+  }
+
+  Serial.println("🚀 Triggering n8n webhook...");
+
+  HTTPClient http;
+  http.begin(N8N_WEBHOOK_URL);
+  http.addHeader("Content-Type", "application/json");
+  http.setTimeout(15000);
+
+  DynamicJsonDocument doc(512);
+  doc["device_id"]  = deviceId;
+  doc["lat"]        = gpsFix ? gpsLat       : 0.0;
+  doc["lng"]        = gpsFix ? gpsLng       : 0.0;
+  doc["speed_kmph"] = gpsFix ? gpsSpeedKmph : 0.0;
+  doc["gps_fix"]    = gpsFix;
+  doc["time"]       = gpsTimeStr;
+  doc["satellites"] = gps.satellites.isValid() ? gps.satellites.value() : 0;
+  doc["maps_url"]   = gpsFix
+    ? "https://maps.google.com/?q=" + String(gpsLat,6) + "," + String(gpsLng,6)
+    : "No GPS fix at time of crash";
+
+  String payload;
+  serializeJson(doc, payload);
+  Serial.println("[n8n] Payload: " + payload);
+
+  int code = http.POST(payload);
+  if (code == 200) {
+    Serial.println("✅ n8n triggered!");
+  } else {
+    Serial.print("❌ n8n failed: ");
+    Serial.println(code);
+    Serial.println(http.getString());
+  }
+  http.end();
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -211,6 +253,7 @@ void checkForCrash(float gForce) {
       Serial.println("========================================");
 
       uploadGpsToSupabase(); //send only when crash
+      triggerN8N();
     }
   } else {
     aboveThreshold = false;
