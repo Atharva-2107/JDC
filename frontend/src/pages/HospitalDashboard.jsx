@@ -9,7 +9,7 @@ import CrashAlertModal from '../components/CrashAlertModal';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import {
-    Activity, BedDouble, Ambulance, AlertTriangle, CheckCircle, Clock, TrendingUp, Users
+    Activity, BedDouble, Ambulance, AlertTriangle, CheckCircle, Clock, TrendingUp, Users, MapPin, Satellite
 } from 'lucide-react';
 
 import {
@@ -17,9 +17,10 @@ import {
 } from 'recharts';
 
 const MapView = lazy(() => import('../components/MapView'));
+const DevicesPage = lazy(() => import('./DevicesPage'));
 
 // ── sub-page: Overview ──────────────────────────────────────────────
-function Overview({ crashes, hospitals, ambulances, onRespond }) {
+function Overview({ crashes, hospitals, ambulances, gpsLocations, onRespond }) {
     const active = crashes.filter(c => c.status === 'active').length;
     const responding = crashes.filter(c => c.status === 'responding').length;
     const resolved = crashes.filter(c => c.status === 'resolved').length;
@@ -51,6 +52,9 @@ function Overview({ crashes, hospitals, ambulances, onRespond }) {
         { name: 'Resolved', value: resolved || 1, color: '#10b981' },
     ];
 
+    // Get the latest GPS-reported crashes (those with real coordinates)
+    const gpsCrashes = crashes.filter(c => c.lat && c.lng && c.deviceId);
+
     return (
         <div>
             {/* Stats */}
@@ -66,6 +70,91 @@ function Overview({ crashes, hospitals, ambulances, onRespond }) {
                         <div className="stat-card-change" style={{ color: '#64748b' }}>{s.change}</div>
                     </div>
                 ))}
+            </div>
+
+            {/* GPS Crash Locations — Real-time from ESP32 */}
+            <div className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
+                <div className="section-header" style={{ marginBottom: 20 }}>
+                    <div>
+                        <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <MapPin size={20} style={{ color: '#06b6d4' }} />
+                            GPS Crash Locations
+                        </div>
+                        <div className="section-subtitle">Real-time crash coordinates from ESP32 devices</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.2)', borderRadius: 100 }}>
+                        <Satellite size={14} style={{ color: '#06b6d4' }} />
+                        <span style={{ fontSize: 12, color: '#06b6d4', fontWeight: 600 }}>{gpsCrashes.length} GPS Reports</span>
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                    {/* Mini-map with latest crash */}
+                    <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', height: 280 }}>
+                        <Suspense fallback={<div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a1120' }}><div className="spinner" /></div>}>
+                            <MapView crashes={gpsCrashes.slice(0, 10)} hospitals={[]} ambulances={[]} gpsLocations={gpsLocations} height={280} autoCenter={true} useGeolocation={true} />
+                        </Suspense>
+                    </div>
+
+                    {/* Latest GPS crash cards */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+                        {gpsCrashes.length === 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#475569', fontSize: 14 }}>
+                                No GPS crash reports yet
+                            </div>
+                        )}
+                        {gpsCrashes.slice(0, 6).map((c, i) => (
+                            <div key={c.id} style={{
+                                padding: '14px 18px',
+                                background: i === 0 ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)',
+                                border: `1px solid ${i === 0 ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                                borderRadius: 12,
+                                transition: 'all 0.2s',
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span style={{ fontSize: 16 }}>{i === 0 ? '🔴' : '📍'}</span>
+                                        <span style={{ fontWeight: 700, fontSize: 14, color: i === 0 ? '#ef4444' : '#f1f5f9' }}>
+                                            {i === 0 ? 'LATEST' : `Crash #${gpsCrashes.length - i}`}
+                                        </span>
+                                    </div>
+                                    <span className={`badge badge-${c.status}`} style={{ fontSize: 10 }}>{c.status}</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 12 }}>
+                                    <div>
+                                        <span style={{ color: '#64748b' }}>GPS: </span>
+                                        <span style={{ fontFamily: 'JetBrains Mono, monospace', color: '#06b6d4', fontWeight: 600, fontSize: 11 }}>
+                                            {c.lat?.toFixed(6)}, {c.lng?.toFixed(6)}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span style={{ color: '#64748b' }}>Device: </span>
+                                        <span style={{ color: '#3b82f6', fontWeight: 600 }}>{c.deviceId}</span>
+                                    </div>
+                                    <div>
+                                        <span style={{ color: '#64748b' }}>Time: </span>
+                                        <span style={{ color: '#94a3b8', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+                                            {new Date(c.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'medium' })}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span style={{ color: '#64748b' }}>Severity: </span>
+                                        <span style={{ color: c.severity === 'high' ? '#ef4444' : c.severity === 'medium' ? '#f59e0b' : '#10b981', fontWeight: 700, textTransform: 'uppercase', fontSize: 11 }}>
+                                            {c.severity}
+                                        </span>
+                                    </div>
+                                </div>
+                                {c.status === 'active' && (
+                                    <div style={{ marginTop: 10 }}>
+                                        <button onClick={() => onRespond(c)} className="btn btn-danger btn-sm" style={{ width: '100%', fontSize: 12 }}>
+                                            🚑 Dispatch Ambulance
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
 
             {/* Charts row */}
@@ -136,29 +225,83 @@ function Overview({ crashes, hospitals, ambulances, onRespond }) {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th>Time</th><th>Location</th><th>Severity</th><th>Status</th><th>Ambulance</th><th>Victims</th><th>Action</th>
+                                <th>Time</th>
+                                <th>Victim</th>
+                                <th>Location</th>
+                                <th>Severity</th>
+                                <th>Status</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {crashes.slice(0, 8).map(c => (
                                 <tr key={c.id}>
-                                    <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#64748b' }}>
+                                    <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>
                                         {new Date(c.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                                     </td>
-                                    <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{c.location}</td>
+                                    {/* Victim info cell */}
+                                    <td>
+                                        {c.userName ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <div style={{
+                                                    width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                                                    background: 'rgba(230,57,70,0.12)', border: '1px solid rgba(230,57,70,0.25)',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    fontSize: 13, fontWeight: 800, color: 'var(--red)',
+                                                }}>
+                                                    {c.userName[0].toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>{c.userName}</div>
+                                                    <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                                                        {c.userPhone && (
+                                                            <a href={`tel:${c.userPhone}`} style={{
+                                                                fontSize: 11, color: '#06b6d4', textDecoration: 'none',
+                                                                fontWeight: 600, fontFamily: 'JetBrains Mono, monospace',
+                                                            }}>{c.userPhone}</a>
+                                                        )}
+                                                        {c.userBloodGroup && (
+                                                            <span style={{
+                                                                fontSize: 10, fontWeight: 700, color: 'var(--red)',
+                                                                background: 'rgba(230,57,70,0.08)', padding: '1px 6px',
+                                                                borderRadius: 10, border: '1px solid rgba(230,57,70,0.2)',
+                                                            }}>{c.userBloodGroup}</span>
+                                                        )}
+                                                        {c.vehiclePlate && (
+                                                            <span style={{
+                                                                fontSize: 10, fontWeight: 700, color: '#06b6d4',
+                                                                background: 'rgba(6,182,212,0.06)', padding: '1px 6px',
+                                                                borderRadius: 10, border: '1px solid rgba(6,182,212,0.2)',
+                                                                fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.5px',
+                                                            }}>{c.vehiclePlate}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <span style={{ color: '#475569', fontSize: 12 }}>Unknown</span>
+                                        )}
+                                    </td>
+                                    <td>
+                                        <div style={{ fontSize: 13, color: '#f1f5f9', fontWeight: 500 }}>{c.location}</div>
+                                        <div style={{ fontSize: 11, color: '#475569', fontFamily: 'JetBrains Mono, monospace', marginTop: 2 }}>
+                                            {c.lat?.toFixed(4)}, {c.lng?.toFixed(4)}
+                                        </div>
+                                    </td>
                                     <td>
                                         <span className={`badge badge-${c.severity}`}>
                                             <span className="pulse-dot" />{c.severity}
                                         </span>
                                     </td>
                                     <td><span className={`badge badge-${c.status}`}>{c.status}</span></td>
-                                    <td style={{ color: '#3b82f6', fontWeight: 600 }}>{c.assignedAmbulance || '—'}</td>
-                                    <td>{c.victims || 1}</td>
                                     <td>
                                         {c.status === 'active' && (
-                                            <button onClick={() => onRespond(c)} className="btn btn-danger btn-sm">Dispatch</button>
+                                            <button onClick={() => onRespond(c)} className="btn btn-danger btn-sm">🚑 Dispatch</button>
                                         )}
-                                        {c.status !== 'active' && <span style={{ color: '#475569', fontSize: 13 }}>—</span>}
+                                        {c.status === 'responding' && (
+                                            <span style={{ color: '#f59e0b', fontSize: 12, fontWeight: 600 }}>Dispatched ✓</span>
+                                        )}
+                                        {c.status === 'resolved' && <span style={{ color: '#10b981', fontSize: 12, fontWeight: 600 }}>Resolved ✓</span>}
                                     </td>
                                 </tr>
                             ))}
@@ -295,25 +438,68 @@ function IncidentsPage({ crashes, onUpdateStatus }) {
                 <table className="data-table">
                     <thead>
                         <tr>
-                            <th>Timestamp</th><th>Location</th><th>Coords</th><th>Device</th><th>Severity</th><th>Status</th><th>Ambulance</th><th>Victims</th><th>Actions</th>
+                            <th>Time</th>
+                            <th>Victim</th>
+                            <th>Location</th>
+                            <th>Severity</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filtered.map(c => (
                             <tr key={c.id}>
-                                <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#64748b' }}>
+                                <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>
                                     {new Date(c.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
                                 </td>
-                                <td style={{ color: '#f1f5f9', fontWeight: 500, maxWidth: 150 }}>{c.location}</td>
-                                <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#64748b' }}>{c.lat?.toFixed(4)}, {c.lng?.toFixed(4)}</td>
-                                <td style={{ color: '#3b82f6', fontWeight: 600 }}>{c.deviceId}</td>
+                                {/* Victim cell */}
+                                <td style={{ minWidth: 180 }}>
+                                    {c.userName ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <div style={{
+                                                width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                                                background: 'rgba(230,57,70,0.12)', border: '1px solid rgba(230,57,70,0.25)',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: 13, fontWeight: 800, color: 'var(--red)',
+                                            }}>
+                                                {c.userName[0].toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>{c.userName}</div>
+                                                <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                                                    {c.userPhone && (
+                                                        <a href={`tel:${c.userPhone}`} style={{ fontSize: 11, color: '#06b6d4', textDecoration: 'none', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
+                                                            {c.userPhone}
+                                                        </a>
+                                                    )}
+                                                    {c.userBloodGroup && (
+                                                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--red)', background: 'rgba(230,57,70,0.08)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(230,57,70,0.2)' }}>
+                                                            {c.userBloodGroup}
+                                                        </span>
+                                                    )}
+                                                    {c.vehiclePlate && (
+                                                        <span style={{ fontSize: 10, fontWeight: 700, color: '#06b6d4', background: 'rgba(6,182,212,0.06)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(6,182,212,0.2)', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.5px' }}>
+                                                            {c.vehiclePlate}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <span style={{ color: '#475569', fontSize: 12 }}>Unknown</span>
+                                    )}
+                                </td>
+                                <td>
+                                    <div style={{ color: '#f1f5f9', fontWeight: 500, fontSize: 13 }}>{c.location}</div>
+                                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#475569', marginTop: 2 }}>
+                                        {c.lat?.toFixed(4)}, {c.lng?.toFixed(4)}
+                                    </div>
+                                </td>
                                 <td><span className={`badge badge-${c.severity}`}>{c.severity}</span></td>
                                 <td><span className={`badge badge-${c.status}`}>{c.status}</span></td>
-                                <td style={{ color: '#f59e0b', fontWeight: 600 }}>{c.assignedAmbulance || '—'}</td>
-                                <td style={{ textAlign: 'center' }}>{c.victims || 1}</td>
                                 <td>
                                     <div style={{ display: 'flex', gap: 6 }}>
-                                        {c.status === 'active' && <button onClick={() => onUpdateStatus(c.id, 'responding')} className="btn btn-danger btn-sm">Respond</button>}
+                                        {c.status === 'active' && <button onClick={() => onUpdateStatus(c.id, 'responding')} className="btn btn-danger btn-sm">🚑 Dispatch</button>}
                                         {c.status === 'responding' && <button onClick={() => onUpdateStatus(c.id, 'resolved')} className="btn btn-success btn-sm">Resolve</button>}
                                     </div>
                                 </td>
@@ -362,13 +548,20 @@ function AmbulanceTracking({ ambulances }) {
 }
 
 // ── Main Hospital Dashboard ─────────────────────────────────────────
-// Helper to normalize snake_case DB rows to camelCase for components
 const normalizeCrash = (c) => ({
     id: c.id, lat: c.lat, lng: c.lng, severity: c.severity,
     deviceId: c.device_id, location: c.location, timestamp: c.created_at,
     status: c.status, assignedAmbulance: c.assigned_ambulance,
+    respondedByHospital: c.responded_by_hospital,
     respondedAt: c.responded_at, resolvedAt: c.resolved_at,
     victims: c.victims, notes: c.notes,
+    is_sos: c.is_sos, is_demo: c.is_demo,
+    // Victim / user details
+    userName: c.user_name,
+    userPhone: c.user_phone,
+    userBloodGroup: c.user_blood_group,
+    vehiclePlate: c.vehicle_plate,
+    userId: c.user_id,
 });
 const normalizeHospital = (h) => ({
     id: h.id, name: h.name, address: h.address || '', lat: h.lat, lng: h.lng,
@@ -387,18 +580,26 @@ const normalizeAmbulance = (a) => ({
 });
 
 export default function HospitalDashboard() {
-    const { crashes: socketCrashes, newCrashAlert, dismissAlert, setCrashes } = useSocket();
+    // BUG FIX #1: useAuth() must be called at component root scope
+    const { user } = useAuth();
+    const { crashes: socketCrashes, newCrashAlert, latestCrashUpdate, dismissAlert, setCrashes, latestGpsLocations } = useSocket();
     const [crashes, setCrashesLocal] = useState([]);
     const [hospitals, setHospitals] = useState([]);
     const [ambulances, setAmbulances] = useState([]);
+    const [gpsLocations, setGpsLocations] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const fetchAll = async () => {
         try {
-            const [crashRes, hospRes, ambRes] = await Promise.all([
+            // If user has a hospitalId, scope crashes and hospital data accordingly
+            // Otherwise load all (admin mode)
+            const [crashRes, hospRes, ambRes, gpsRes] = await Promise.all([
                 supabase.from('crashes').select('*').order('created_at', { ascending: false }),
-                supabase.from('hospitals').select('*'),
+                user?.hospitalId
+                    ? supabase.from('hospitals').select('*').eq('id', user.hospitalId)
+                    : supabase.from('hospitals').select('*'),
                 supabase.from('ambulances').select('*'),
+                supabase.from('gps_locations').select('*').order('created_at', { ascending: false }).limit(50),
             ]);
             if (crashRes.error) throw crashRes.error;
             if (hospRes.error) throw hospRes.error;
@@ -406,6 +607,15 @@ export default function HospitalDashboard() {
             setCrashesLocal((crashRes.data || []).map(normalizeCrash));
             setHospitals((hospRes.data || []).map(normalizeHospital));
             setAmbulances((ambRes.data || []).map(normalizeAmbulance));
+            if (!gpsRes.error) {
+                const seen = new Set();
+                const unique = (gpsRes.data || []).filter(g => {
+                    if (seen.has(g.device_id)) return false;
+                    seen.add(g.device_id);
+                    return true;
+                });
+                setGpsLocations(unique);
+            }
         } catch (e) {
             console.error('Fetch error:', e);
             toast.error('Failed to load data from Supabase');
@@ -420,21 +630,96 @@ export default function HospitalDashboard() {
     useEffect(() => {
         if (socketCrashes.length) {
             setCrashesLocal(prev => {
-                const existingIds = new Set(prev.map(c => c.id));
-                const newOnes = socketCrashes.filter(c => !existingIds.has(c.id));
-                return newOnes.length ? [...newOnes, ...prev] : prev;
+                let updatedList = [...prev];
+                let hasChanges = false;
+                
+                socketCrashes.forEach(newCrash => {
+                    const idx = updatedList.findIndex(c => c.id === newCrash.id);
+                    if (idx >= 0) {
+                        // Found an existing crash, update it if its status or resolved_at changed
+                        if (updatedList[idx].status !== newCrash.status || updatedList[idx].resolvedAt !== newCrash.resolvedAt) {
+                            updatedList[idx] = { ...updatedList[idx], ...newCrash };
+                            hasChanges = true;
+                        }
+                    } else {
+                        // Completely new crash
+                        updatedList.unshift(newCrash);
+                        hasChanges = true;
+                    }
+                });
+                
+                return hasChanges ? updatedList : prev;
             });
         }
     }, [socketCrashes]);
 
+    // 🚀 CRITICAL FIX: Merge live single-crash updates from context instantly seamlessly
+    useEffect(() => {
+        if (latestCrashUpdate) {
+            setCrashesLocal(prev => {
+                const idx = prev.findIndex(c => c.id === latestCrashUpdate.id);
+                if (idx === -1) return prev; // Not in view, ignore
+
+                const updatedList = [...prev];
+                // Deep merge the updated row data over the old row
+                updatedList[idx] = { ...updatedList[idx], ...latestCrashUpdate };
+                return updatedList;
+            });
+        }
+    }, [latestCrashUpdate]);
+
+    // Merge realtime GPS locations
+    useEffect(() => {
+        if (latestGpsLocations && latestGpsLocations.length) {
+            setGpsLocations(prev => {
+                const merged = [...prev];
+                latestGpsLocations.forEach(newGps => {
+                    const idx = merged.findIndex(g => g.device_id === newGps.device_id);
+                    if (idx >= 0) {
+                        merged[idx] = newGps;
+                    } else {
+                        merged.unshift(newGps);
+                    }
+                });
+                return merged;
+            });
+        }
+    }, [latestGpsLocations]);
+
     const handleRespond = async (crash) => {
         try {
-            const updateFields = { status: 'responding', responded_at: new Date().toISOString() };
-            const { error } = await supabase.from('crashes').update(updateFields).eq('id', crash.id);
+            // BUG FIX #1 resolved: user is now properly in scope
+            const hospitalName = user?.hospital || user?.name || 'Hospital';
+
+            const { data: current } = await supabase
+                .from('crashes')
+                .select('status')
+                .eq('id', crash.id)
+                .single();
+
+            if (current && current.status !== 'active') {
+                toast.error('Already dispatched by another hospital');
+                fetchAll();
+                return;
+            }
+
+            const { error } = await supabase
+                .from('crashes')
+                .update({
+                    status: 'responding',
+                    responded_at: new Date().toISOString(),
+                    responded_by_hospital: hospitalName,
+                })
+                .eq('id', crash.id);
+
             if (error) throw error;
+
             toast.success(`Ambulance dispatched to ${crash.location}`);
             fetchAll();
-        } catch { toast.error('Failed to update status'); }
+        } catch (err) {
+            console.error('Dispatch error:', err);
+            toast.error('Failed to dispatch');
+        }
     };
 
     const handleUpdateStatus = async (id, status) => {
@@ -460,9 +745,12 @@ export default function HospitalDashboard() {
         );
     }
 
+    // Look up hospital name for sidebar display
+    const myHospital = hospitals.find(h => h.id === user?.hospitalId);
+
     return (
         <div className="app-layout">
-            <Sidebar role="hospital" />
+            <Sidebar role="hospital" hospitalName={myHospital?.name} />
 
             <div className="main-content">
                 <Routes>
@@ -470,7 +758,7 @@ export default function HospitalDashboard() {
                         <>
                             <Topbar title="Hospital Dashboard" subtitle={`${crashes.filter(c => c.status === 'active').length} active emergencies`} />
                             <div className="page-content">
-                                <Overview crashes={crashes} hospitals={hospitals} ambulances={ambulances} onRespond={handleRespond} />
+                                <Overview crashes={crashes} hospitals={hospitals} ambulances={ambulances} gpsLocations={gpsLocations} onRespond={handleRespond} />
                             </div>
                         </>
                     } />
@@ -480,7 +768,7 @@ export default function HospitalDashboard() {
                             <div className="page-content">
                                 <div className="glass-card">
                                     <Suspense fallback={<div style={{ height: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>}>
-                                        <MapView crashes={crashes} ambulances={ambulances} hospitals={hospitals} height={600} />
+                                        <MapView crashes={crashes} ambulances={ambulances} hospitals={hospitals} gpsLocations={gpsLocations} height={600} autoCenter={true} useGeolocation={true} />
                                     </Suspense>
                                 </div>
                             </div>
@@ -568,6 +856,16 @@ export default function HospitalDashboard() {
                                         </div>
                                     ))}
                                 </div>
+                            </div>
+                        </>
+                    } />
+                    <Route path="/devices" element={
+                        <>
+                            <Topbar title="Devices & Simulator" subtitle="Pair hardware · Simulate crashes · Test mobile alerts" />
+                            <div className="page-content">
+                                <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: '#475569' }}>Loading...</div>}>
+                                    <DevicesPage />
+                                </Suspense>
                             </div>
                         </>
                     } />

@@ -146,8 +146,8 @@ export const AuthProvider = ({ children }) => {
         };
     }, []);
 
-    // Sign Up — returns { role } on auto-confirm, null if email confirmation needed
-    const signup = async (email, password, name, role) => {
+    // Sign Up — accepts optional hospitalId for hospital staff
+    const signup = async (email, password, name, role, hospitalId = null) => {
         isManualAuth.current = true;
 
         let data, error;
@@ -156,7 +156,7 @@ export const AuthProvider = ({ children }) => {
                 supabase.auth.signUp({
                     email,
                     password,
-                    options: { data: { name, role } },
+                    options: { data: { name, role, hospital_id: hospitalId } },
                 }),
                 10000,
                 'Signup'
@@ -177,6 +177,17 @@ export const AuthProvider = ({ children }) => {
         if (data.session && data.user) {
             setUser(data.user);
             setSession(data.session);
+
+            // If hospital staff, also update profiles with hospital_id
+            if (hospitalId && data.user.id) {
+                try {
+                    await supabase
+                        .from('profiles')
+                        .upsert({ id: data.user.id, hospital_id: hospitalId }, { onConflict: 'id' });
+                } catch (upsertErr) {
+                    console.warn('Could not set hospital_id on profile:', upsertErr.message);
+                }
+            }
 
             const prof = await fetchProfileWithRetry(data.user, 2);
             return { role: prof?.role || role };
@@ -232,6 +243,7 @@ export const AuthProvider = ({ children }) => {
         role: profile.role,
         avatar: profile.avatar,
         hospital: profile.hospital,
+        hospitalId: profile.hospital_id || null,
         callSign: profile.call_sign,
         phone: profile.phone,
     } : null;

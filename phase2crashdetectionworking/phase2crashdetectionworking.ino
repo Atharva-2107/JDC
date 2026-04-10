@@ -19,6 +19,12 @@
 // ─── SINGLE LED PIN ───────────────────────────────────────────────────────────
 #define PIN_LED 32  // ONLY LED2 at GPIO32 (220Ω to GND)
 
+// ─── Supabase Config ──────────────────────────────────────────────────────────
+// ⚠️ SAME SUPABASE PROJECT AS WEB APP ⚠️
+#define SUPABASE_URL "https://qrqnrsiwwftqbhauuwbs.supabase.co"
+#define SUPABASE_KEY "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFycW5yc2l3d2Z0cWJoYXV1d2JzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NDg0NzQsImV4cCI6MjA4ODIyNDQ3NH0.Y_8-zaVVmsX3coj2XUNTHuKPwvUE80m3z2Qnt7l1rYI"
+#define WIFI_SSID "SimarHotSpot"
+#define WIFI_PASS "simar55555"
 
 // ─── Timing ───────────────────────────────────────────────────────────────────
 #define GPS_UPLOAD_INTERVAL 30000  // 30 seconds between uploads
@@ -286,45 +292,82 @@ void pollGPS() {
   }
 }
 
-// ─── Supabase Upload (MATCHES YOUR gps_locations SCHEMA) ──────────────────────
+// ─── Supabase Upload — Insert directly into CRASHES table ──────────────────────
 void uploadGpsToSupabase() {
   if (!gpsFix || !wifiConnected) return;
   if (millis() - lastGpsUpload < GPS_UPLOAD_INTERVAL) return;
 
   lastGpsUpload = millis();
 
+  // ── 1. Insert crash into 'crashes' table ──
   HTTPClient http;
-  http.begin(String(SUPABASE_URL) + "/rest/v1/gps_locations");
+  http.begin(String(SUPABASE_URL) + "/rest/v1/crashes");
   http.addHeader("apikey", SUPABASE_KEY);
   http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Prefer", "return=minimal");
 
-  // YOUR EXACT SCHEMA: gps_locations table
+  // Build location string from coordinates
+  String locationStr = String(gpsLat, 4) + "°N, " + String(gpsLng, 4) + "°E";
+
   DynamicJsonDocument doc(1024);
+  doc["lat"] = gpsLat;
+  doc["lng"] = gpsLng;
+  doc["severity"] = "high";
   doc["device_id"] = deviceId;
-  doc["latitude"] = gpsLat;
-  doc["longitude"] = gpsLng;
-  doc["accuracy"] = gps.hdop.isValid() ? gps.hdop.hdop() : 99.0f;
-  doc["satellites"] = gps.satellites.isValid() ? gps.satellites.value() : 0;
-  //doc["timestamp"] = gpsTimeStr;
+  doc["location"] = locationStr;
+  doc["status"] = "active";
+  doc["victims"] = 1;
+  doc["notes"] = "Auto-detected by ESP32 crash sensor. Satellites: " +
+                 String(gps.satellites.isValid() ? gps.satellites.value() : 0) +
+                 ", HDOP: " + String(gps.hdop.isValid() ? gps.hdop.hdop() : 99.0, 1);
 
   String payload;
   serializeJson(doc, payload);
 
-  int httpCode = http.POST(payload);
+  Serial.println("📡 Sending crash to Supabase...");
+  Serial.println(payload);
 
+  int httpCode = http.POST(payload);
   String response = http.getString();
-  Serial.println(response);
 
   if (httpCode == 201) {
-    Serial.println("📍 GPS → Supabase OK");
+    Serial.println("✅ Crash → Supabase OK");
+    Serial.println("   Location: " + locationStr);
   } else {
-    Serial.print("❌ Supabase fail: ");
+    Serial.print("❌ Crash insert fail: ");
     Serial.println(httpCode);
+    Serial.println(response);
   }
 
   http.end();
+
+  // ── 2. Also log to gps_locations for tracking history ──
+  HTTPClient http2;
+  http2.begin(String(SUPABASE_URL) + "/rest/v1/gps_locations");
+  http2.addHeader("apikey", SUPABASE_KEY);
+  http2.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+  http2.addHeader("Content-Type", "application/json");
+  http2.addHeader("Prefer", "return=minimal");
+
+  DynamicJsonDocument gpsDoc(512);
+  gpsDoc["device_id"] = deviceId;
+  gpsDoc["latitude"] = gpsLat;
+  gpsDoc["longitude"] = gpsLng;
+  gpsDoc["accuracy"] = gps.hdop.isValid() ? gps.hdop.hdop() : 99.0f;
+  gpsDoc["satellites"] = gps.satellites.isValid() ? gps.satellites.value() : 0;
+
+  String gpsPayload;
+  serializeJson(gpsDoc, gpsPayload);
+
+  int gpsCode = http2.POST(gpsPayload);
+  if (gpsCode == 201) {
+    Serial.println("📍 GPS log → Supabase OK");
+  } else {
+    Serial.print("⚠️  GPS log fail: ");
+    Serial.println(gpsCode);
+  }
+  http2.end();
 }
 
 // ─── SINGLE LED Logic (PIN 32 only) ───────────────────────────────────────────

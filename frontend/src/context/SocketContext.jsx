@@ -12,9 +12,11 @@ export const SocketProvider = ({ children }) => {
     const [connected, setConnected] = useState(false);
     const [crashes, setCrashes] = useState([]);
     const [newCrashAlert, setNewCrashAlert] = useState(null);
+    const [latestCrashUpdate, setLatestCrashUpdate] = useState(null);
     const [ambulanceLocations, setAmbulanceLocations] = useState({});
+    const [latestGpsLocations, setLatestGpsLocations] = useState([]);
 
-    // Subscribe to Supabase Realtime for crash inserts
+    // Subscribe to Supabase Realtime for crash inserts + GPS locations
     useEffect(() => {
         if (!user) return;
 
@@ -26,7 +28,6 @@ export const SocketProvider = ({ children }) => {
                 { event: 'INSERT', schema: 'public', table: 'crashes' },
                 (payload) => {
                     const crash = payload.new;
-                    // Normalize field names
                     const normalized = {
                         id: crash.id,
                         lat: crash.lat,
@@ -37,6 +38,7 @@ export const SocketProvider = ({ children }) => {
                         timestamp: crash.created_at,
                         status: crash.status,
                         assignedAmbulance: crash.assigned_ambulance,
+                        respondedByHospital: crash.responded_by_hospital,
                         respondedAt: crash.responded_at,
                         resolvedAt: crash.resolved_at,
                         victims: crash.victims,
@@ -85,12 +87,31 @@ export const SocketProvider = ({ children }) => {
                         timestamp: crash.created_at,
                         status: crash.status,
                         assignedAmbulance: crash.assigned_ambulance,
+                        respondedByHospital: crash.responded_by_hospital,
                         respondedAt: crash.responded_at,
                         resolvedAt: crash.resolved_at,
                         victims: crash.victims,
                         notes: crash.notes,
                     };
                     setCrashes(prev => prev.map(c => c.id === normalized.id ? normalized : c));
+                    // 🚀 CRITICAL FIX: Push the update directly to the new dedicated state
+                    setLatestCrashUpdate(normalized);
+                }
+            )
+            .subscribe();
+
+        // Supabase real-time subscription for GPS location updates
+        const gpsChannel = supabase
+            .channel('gps_realtime')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'gps_locations' },
+                (payload) => {
+                    const gps = payload.new;
+                    setLatestGpsLocations(prev => {
+                        const filtered = prev.filter(g => g.device_id !== gps.device_id);
+                        return [gps, ...filtered];
+                    });
                 }
             )
             .subscribe();
@@ -107,7 +128,6 @@ export const SocketProvider = ({ children }) => {
         socket.on('disconnect', () => setConnected(false));
 
         socket.on('new_crash', (crash) => {
-            // Deduplicate with Supabase realtime
             setCrashes(prev => {
                 if (prev.find(c => c.id === crash.id)) return prev;
                 return [crash, ...prev];
@@ -116,6 +136,8 @@ export const SocketProvider = ({ children }) => {
 
         socket.on('crash_updated', (updated) => {
             setCrashes(prev => prev.map(c => c.id === updated.id ? updated : c));
+            // 🚀 CRITICAL FIX: Also capture WebSocket updates for dashboard UI
+            setLatestCrashUpdate(updated);
         });
 
         socket.on('ambulance_location', (data) => {
@@ -124,6 +146,7 @@ export const SocketProvider = ({ children }) => {
 
         return () => {
             crashChannel.unsubscribe();
+            gpsChannel.unsubscribe();
             socket.disconnect();
             socketRef.current = null;
         };
@@ -133,7 +156,7 @@ export const SocketProvider = ({ children }) => {
     const emit = (event, data) => socketRef.current?.emit(event, data);
 
     return (
-        <SocketContext.Provider value={{ socket: socketRef.current, connected, crashes, newCrashAlert, dismissAlert, ambulanceLocations, emit, setCrashes }}>
+        <SocketContext.Provider value={{ socket: socketRef.current, connected, crashes, newCrashAlert, latestCrashUpdate, dismissAlert, ambulanceLocations, latestGpsLocations, emit, setCrashes }}>
             {children}
         </SocketContext.Provider>
     );

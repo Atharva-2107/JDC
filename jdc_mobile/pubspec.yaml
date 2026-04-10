@@ -1,0 +1,95 @@
+name: jdc_app
+description: JDC - Just Don't Crash | IoT Crash Detection Companion App
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── Supabase ──────────────────────────────────────────────
+  supabase_flutter: ^2.5.6           # Auth + DB + Realtime
+
+  # ── Firebase (FCM only - push notifications) ──────────────
+  firebase_core: ^3.1.1
+  firebase_messaging: ^15.0.4
+  flutter_local_notifications: ^17.2.2  # Show heads-up & full-screen alerts
+
+  # ── State Management ──────────────────────────────────────
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+
+  # ── Navigation ────────────────────────────────────────────
+  go_router: ^14.2.0
+
+  # ── Maps (OpenStreetMap - no API key needed) ──────────────
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # ── Location ─────────────────────────────────────────────
+  geolocator: ^14.0.2
+  geocoding: ^3.0.0
+
+  # ── Phone calls & URL launching ───────────────────────────
+  url_launcher: ^6.3.2
+
+  # ── Google Sign-In ────────────────────────────────────────
+  google_sign_in: ^6.2.1
+
+  # ── UI & Styling ─────────────────────────────────────────
+  google_fonts: ^6.2.1
+  flutter_svg: ^2.0.10+1
+  lottie: ^3.1.2                     # Animated illustrations
+  shimmer: ^3.0.0                    # Loading skeletons
+  cached_network_image: ^3.3.1
+  fl_chart: ^0.68.0                  # Charts for incident stats
+
+  # ── Utilities ────────────────────────────────────────────
+  intl: ^0.19.0                      # Date formatting
+  shared_preferences: ^2.3.2         # Local prefs (dark mode etc)
+  permission_handler: ^11.3.1        # Runtime permissions
+  connectivity_plus: ^6.0.3          # Network state
+  uuid: ^4.4.2                       # Generate UUIDs
+  image_picker: ^1.1.2               # Profile photo
+  dio: ^5.6.0                        # HTTP client (Node.js calls)
+  pretty_dio_logger: ^1.4.0
+
+  # ── Animations ───────────────────────────────────────────
+  animate_do: ^3.3.4
+  flutter_animate: ^4.5.0
+
+  # ── Icons ────────────────────────────────────────────────
+  iconsax: ^0.0.8
+  cupertino_icons: ^1.0.8
+  http: ^1.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.11
+  riverpod_generator: ^2.4.3
+  custom_lint: 0.7.6
+  riverpod_lint: ^2.3.10
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/animations/
+#  fonts:
+#    - family: Syne
+#      fonts:
+#        - asset: assets/fonts/Syne-Regular.ttf
+#        - asset: assets/fonts/Syne-Medium.ttf
+#          weight: 500
+#        - asset: assets/fonts/Syne-SemiBold.ttf
+#          weight: 600
+#        - asset: assets/fonts/Syne-Bold.ttf
+#          weight: 700
+#        - asset: assets/fonts/Syne-ExtraBold.ttf
+#          weight: 800

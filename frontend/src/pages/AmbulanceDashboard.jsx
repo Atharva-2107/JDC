@@ -84,11 +84,35 @@ function AmbOverview({ crashes, myAmbulance, onAcceptCrash }) {
                                 <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
                                     <span className={`badge badge-${c.severity}`}>{c.severity} SEVERITY</span>
                                     <span className={`badge badge-${c.status}`}>{c.status}</span>
+                                    {c.is_sos && <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '2px 8px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.25)' }}>SOS</span>}
                                 </div>
+                                {/* Victim info */}
+                                {c.userName && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, padding: '10px 14px', background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 10 }}>
+                                        <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 15, color: '#ef4444', flexShrink: 0 }}>
+                                            {c.userName[0].toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <div style={{ fontWeight: 700, fontSize: 14, color: '#f1f5f9' }}>{c.userName}</div>
+                                            <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                                                {c.userPhone && (
+                                                    <a href={`tel:${c.userPhone}`} style={{ fontSize: 12, color: '#06b6d4', textDecoration: 'none', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                                                        📞 {c.userPhone}
+                                                    </a>
+                                                )}
+                                                {c.userBloodGroup && (
+                                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.08)', padding: '2px 8px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.2)' }}>🩸 {c.userBloodGroup}</span>
+                                                )}
+                                                {c.vehiclePlate && (
+                                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#06b6d4', fontFamily: 'JetBrains Mono, monospace', background: 'rgba(6,182,212,0.06)', padding: '2px 8px', borderRadius: 10, border: '1px solid rgba(6,182,212,0.2)', letterSpacing: '0.5px' }}>🚗 {c.vehiclePlate}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>📍 {c.location}</div>
                                 <div style={{ fontSize: 13, color: '#64748b', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                                     <span>🌐 {c.lat?.toFixed(4)}, {c.lng?.toFixed(4)}</span>
-                                    <span>📡 {c.deviceId}</span>
                                     <span>👥 {c.victims || 1} victims</span>
                                     <span>⏰ {new Date(c.timestamp).toLocaleTimeString('en-IN')}</span>
                                 </div>
@@ -145,18 +169,36 @@ function MyIncidents({ crashes, onUpdateStatus }) {
                 ) : (
                     <table className="data-table">
                         <thead>
-                            <tr><th>Time</th><th>Location</th><th>Severity</th><th>Status</th><th>Victims</th><th>Actions</th></tr>
+                            <tr>
+                                <th>Time</th>
+                                <th>Victim</th>
+                                <th>Location</th>
+                                <th>Severity</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
                         </thead>
                         <tbody>
                             {myIncidents.map(c => (
                                 <tr key={c.id}>
-                                    <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#64748b' }}>
+                                    <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>
                                         {new Date(c.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
                                     </td>
-                                    <td style={{ color: '#f1f5f9', fontWeight: 500 }}>{c.location}</td>
+                                    <td style={{ minWidth: 160 }}>
+                                        {c.userName ? (
+                                            <div>
+                                                <div style={{ fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>{c.userName}</div>
+                                                <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                                                    {c.userPhone && <a href={`tel:${c.userPhone}`} style={{ fontSize: 11, color: '#06b6d4', textDecoration: 'none', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>{c.userPhone}</a>}
+                                                    {c.userBloodGroup && <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.08)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.2)' }}>{c.userBloodGroup}</span>}
+                                                    {c.vehiclePlate && <span style={{ fontSize: 10, fontWeight: 700, color: '#06b6d4', background: 'rgba(6,182,212,0.06)', padding: '1px 6px', borderRadius: 10, border: '1px solid rgba(6,182,212,0.2)', fontFamily: 'JetBrains Mono, monospace' }}>{c.vehiclePlate}</span>}
+                                                </div>
+                                            </div>
+                                        ) : <span style={{ color: '#475569', fontSize: 12 }}>Unknown</span>}
+                                    </td>
+                                    <td style={{ color: '#f1f5f9', fontWeight: 500, fontSize: 13 }}>{c.location}</td>
                                     <td><span className={`badge badge-${c.severity}`}>{c.severity}</span></td>
                                     <td><span className={`badge badge-${c.status}`}>{c.status}</span></td>
-                                    <td>{c.victims || 1}</td>
                                     <td>
                                         {c.status === 'responding' && (
                                             <div style={{ display: 'flex', gap: 6 }}>
@@ -182,6 +224,13 @@ const normalizeCrash = (c) => ({
     status: c.status, assignedAmbulance: c.assigned_ambulance,
     respondedAt: c.responded_at, resolvedAt: c.resolved_at,
     victims: c.victims, notes: c.notes,
+    is_sos: c.is_sos, is_demo: c.is_demo,
+    // Victim info
+    userName: c.user_name,
+    userPhone: c.user_phone,
+    userBloodGroup: c.user_blood_group,
+    vehiclePlate: c.vehicle_plate,
+    userId: c.user_id,
 });
 const normalizeHospital = (h) => ({
     id: h.id, name: h.name, address: h.address || '', lat: h.lat, lng: h.lng,

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "318540066373",
+    "project_id": "justdontcrash-b7164",
+    "storage_bucket": "justdontcrash-b7164.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:318540066373:android:c767291acd44aae0bdbd2c",
+        "android_client_info": {
+          "package_name": "com.example.jdc_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsA2A_8kKNKOctUkx9YUGx0f2TEbwnR2s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
