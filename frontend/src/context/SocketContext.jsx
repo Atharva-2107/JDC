@@ -43,7 +43,20 @@ export const SocketProvider = ({ children }) => {
                         resolvedAt: crash.resolved_at,
                         victims: crash.victims,
                         notes: crash.notes,
+                        // Victim info
+                        userName: crash.user_name,
+                        userPhone: crash.user_phone,
+                        userBloodGroup: crash.user_blood_group,
+                        vehiclePlate: crash.vehicle_plate,
+                        userId: crash.user_id,
                     };
+
+                    // ── Only promote to the hospital dashboard if the crash has
+                    //    been confirmed by the mobile app (status === 'active').
+                    //    'pending_user'  → user still has the 15s window open
+                    //    'cancelled'     → user pressed "I'm OK", hospitals must never see it
+                    if (crash.status !== 'active') return;
+
                     setCrashes(prev => [normalized, ...prev]);
                     setNewCrashAlert(normalized);
                     toast.custom((t) => (
@@ -128,6 +141,9 @@ export const SocketProvider = ({ children }) => {
         socket.on('disconnect', () => setConnected(false));
 
         socket.on('new_crash', (crash) => {
+            // Only show crashes that have been confirmed by the mobile user
+            // (pending_user = 15s window still open, cancelled = user is OK)
+            if (crash.status === 'pending_user' || crash.status === 'cancelled') return;
             setCrashes(prev => {
                 if (prev.find(c => c.id === crash.id)) return prev;
                 return [crash, ...prev];

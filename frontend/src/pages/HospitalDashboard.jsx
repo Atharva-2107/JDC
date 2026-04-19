@@ -594,7 +594,11 @@ export default function HospitalDashboard() {
             // If user has a hospitalId, scope crashes and hospital data accordingly
             // Otherwise load all (admin mode)
             const [crashRes, hospRes, ambRes, gpsRes] = await Promise.all([
-                supabase.from('crashes').select('*').order('created_at', { ascending: false }),
+                supabase
+                    .from('crashes')
+                    .select('*')
+                    .not('status', 'in', '("pending_user","cancelled")')
+                    .order('created_at', { ascending: false }),
                 user?.hospitalId
                     ? supabase.from('hospitals').select('*').eq('id', user.hospitalId)
                     : supabase.from('hospitals').select('*'),

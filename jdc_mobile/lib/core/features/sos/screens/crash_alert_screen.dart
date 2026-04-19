@@ -1,3 +1,10 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// REPLACEMENT CODE for:
+//   jdc_mobile/lib/core/features/sos/screens/crash_alert_screen.dart
+//
+// DO NOT edit the original file directly — copy this entire content into it.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -39,6 +46,11 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
   Map<String, dynamic>? _userProfile;
   Map<String, dynamic>? _device;
 
+  // ── Backend base URL (change the IP to your machine's LAN IP) ──────────────
+  String get _backendBase => Platform.isAndroid
+      ? 'http://192.168.0.109:3001' // ← your PC's Wi-Fi IP on the same network
+      : 'http://localhost:3001';
+
   @override
   void initState() {
     super.initState();
@@ -53,7 +65,7 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
     )..forward();
 
     _startCountdown();
-    _loadUserProfile(); // Fetch user details for passing to hospital/ambulance
+    _loadUserProfile();
   }
 
   // ── Load the current user's profile + paired device ─────────────────────────
@@ -62,14 +74,12 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
     if (uid == null) return;
 
     try {
-      // Fetch full profile
       final profile = await supabase
           .from('users')
           .select('full_name, phone, blood_group')
           .eq('id', uid)
           .maybeSingle();
 
-      // Fetch paired device (for vehicle_plate)
       final device = await supabase
           .from('devices')
           .select('device_id, device_name, vehicle_plate')
@@ -83,19 +93,8 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
           _device = device;
         });
       }
-
-      // Once profile is loaded, update the crash record to include user details
-      if (widget.incidentId.isNotEmpty) {
-        await supabase.from('crashes').update({
-          'user_id': uid,
-          'user_name': profile?['full_name'],
-          'user_phone': profile?['phone'],
-          'user_blood_group': profile?['blood_group'],
-          'vehicle_plate': device?['vehicle_plate'],
-        }).eq('id', widget.incidentId);
-      }
     } catch (e) {
-      debugPrint('Failed to load user profile for crash: $e');
+      debugPrint('Failed to load user profile: $e');
     }
   }
 
@@ -111,65 +110,65 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
   }
 
   // ── Auto-dispatch when countdown reaches 0 ──────────────────────────────────
+  // THIS is the critical change: we call POST /api/crash/:id/confirm instead
+  // of directly mutating the crash status ourselves. The backend will:
+  //   1. Flip status pending_user → active
+  //   2. Emit new_crash to hospital dashboard via Socket.io
+  //   3. Trigger Twilio (SMS + WhatsApp + voice call)
   Future<void> _onAutoSOS() async {
     if (!mounted || _hasCancelled || _hasDispatched) return;
     setState(() => _hasDispatched = true);
 
     final user = supabase.auth.currentUser;
-    final userName = _userProfile?['full_name'] ?? user?.userMetadata?['full_name'] ?? 'JDC User';
+    final userName = _userProfile?['full_name'] ??
+        user?.userMetadata?['full_name'] ??
+        'JDC User';
     final userPhone = _userProfile?['phone'] ?? user?.phone ?? '';
     final bloodGroup = _userProfile?['blood_group'] ?? '';
     final vehiclePlate = _device?['vehicle_plate'] ?? '';
-    final deviceId = _device?['device_id'] ?? 'SOS-MOBILE';
+    final userId = user?.id;
 
-    final String backendUrl = Platform.isAndroid
-        ? 'http://192.168.0.103:3001/api/emergency/alert' // Changed from 10.0.2.2 to physical device Wi-Fi IP
-        : 'http://localhost:3001/api/emergency/alert';
-
-    try {
-      // 1. Trigger Twilio emergency alerts with full user info
-      await http.post(
-        Uri.parse(backendUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'userId': user?.id,
-          'severity': 'high',
-          'lat': widget.latitude,
-          'lng': widget.longitude,
-          'device_id': deviceId,
-          'userName': userName,
-          'userPhone': userPhone,
-          'bloodGroup': bloodGroup,
-          'vehiclePlate': vehiclePlate,
-          'isAutoDispatch': true,
-          'countdown': 15,
-        }),
-      );
-    } catch (e) {
-      debugPrint('Failed to trigger Twilio backend SOS: $e');
-    }
-
-    // 2. Update crash record to 'responding' + add all victim details
-    try {
-      await supabase.from('crashes').update({
-        'status': 'responding',
-        'responded_at': DateTime.now().toIso8601String(),
-        'responded_by_hospital': 'AUTO-DISPATCH (15s timeout)',
-        // Ensure user info is set (in case _loadUserProfile was slow)
-        'user_id': user?.id,
-        'user_name': userName,
-        'user_phone': userPhone,
-        'user_blood_group': bloodGroup,
-        'vehicle_plate': vehiclePlate,
-      }).eq('id', widget.incidentId);
-    } catch (e) {
-      debugPrint('Failed to update crash status: $e');
+    // ── 1. Confirm crash to backend (promotes to 'active' + notifies hospitals + Twilio) ──
+    if (widget.incidentId.isNotEmpty) {
+      try {
+        final response = await http.post(
+          Uri.parse('$_backendBase/api/crash/${widget.incidentId}/confirm'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'userId': userId,
+            'userName': userName,
+            'userPhone': userPhone,
+            'bloodGroup': bloodGroup,
+            'vehiclePlate': vehiclePlate,
+            'lat': widget.latitude,
+            'lng': widget.longitude,
+          }),
+        );
+        debugPrint('Confirm response: ${response.statusCode} ${response.body}');
+      } catch (e) {
+        debugPrint('Failed to confirm crash to backend: $e');
+        // Even if backend call fails, do the Supabase update as a safety net
+        try {
+          await supabase.from('crashes').update({
+            'status': 'active',
+            'user_id': userId,
+            'user_name': userName,
+            'user_phone': userPhone,
+            'user_blood_group': bloodGroup,
+            'vehicle_plate': vehiclePlate,
+          }).eq('id', widget.incidentId);
+        } catch (_) {}
+      }
+    } else {
+      // No incidentId (e.g., FCM arrived without one) — just show the UI
+      debugPrint('No incidentId — skipping backend confirm');
     }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('🚑 Ambulance auto-dispatched! Emergency contacts notified.'),
+          content:
+              Text('🚑 Ambulance dispatched! Emergency contacts notified.'),
           backgroundColor: AppColors.primary,
           duration: Duration(seconds: 5),
         ),
@@ -178,21 +177,44 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
   }
 
   // ── I'm OK — cancel the alert ────────────────────────────────────────────────
+  // Calls POST /api/crash/:id/cancel so the crash stays in DB but hospital
+  // dashboard is never notified (status stays 'cancelled').
   Future<void> _cancelAlert() async {
     setState(() => _isCancelling = true);
     _timer?.cancel();
 
-    try {
-      await supabase.from('crashes').update({
-        'status': 'cancelled',
-        'resolved_at': DateTime.now().toIso8601String(),
-      }).eq('id', widget.incidentId);
-    } catch (e) {
-        debugPrint('Cancellation update failed: $e');
+    if (widget.incidentId.isNotEmpty) {
+      // Try the clean backend cancel first
+      bool backendSuccess = false;
+      try {
+        final response = await http.post(
+          Uri.parse('$_backendBase/api/crash/${widget.incidentId}/cancel'),
+          headers: {'Content-Type': 'application/json'},
+        );
+        backendSuccess = response.statusCode == 200;
+        debugPrint('Cancel response: ${response.statusCode}');
+      } catch (e) {
+        debugPrint('Backend cancel failed, falling back to Supabase: $e');
+      }
+
+      // Fallback: update Supabase directly if the backend call failed
+      if (!backendSuccess) {
+        try {
+          await supabase.from('crashes').update({
+            'status': 'cancelled',
+            'resolved_at': DateTime.now().toIso8601String(),
+          }).eq('id', widget.incidentId);
+        } catch (e) {
+          debugPrint('Supabase cancel failed: $e');
+        }
+      }
     }
 
     if (mounted) {
-      setState(() { _hasCancelled = true; _isCancelling = false; });
+      setState(() {
+        _hasCancelled = true;
+        _isCancelling = false;
+      });
       await Future.delayed(const Duration(milliseconds: 800));
       if (mounted) context.go('/');
     }
@@ -215,8 +237,9 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final userName = _userProfile?['full_name'] ?? 
-        supabase.auth.currentUser?.userMetadata?['full_name'] ?? 'User';
+    final userName = _userProfile?['full_name'] ??
+        supabase.auth.currentUser?.userMetadata?['full_name'] ??
+        'User';
     final bloodGroup = _userProfile?['blood_group'] as String?;
     final vehiclePlate = _device?['vehicle_plate'] as String?;
 
@@ -229,15 +252,24 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
             children: [
               Icon(Iconsax.tick_circle, color: AppColors.success, size: 80),
               SizedBox(height: 20),
-              Text('Alert Cancelled',
-                  style: TextStyle(
-                      fontFamily: 'Syne',
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.success)),
+              Text(
+                'Alert Cancelled',
+                style: TextStyle(
+                  fontFamily: 'Syne',
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.success,
+                ),
+              ),
               SizedBox(height: 8),
-              Text('Glad you\'re safe!',
-                  style: TextStyle(fontFamily: 'Syne', fontSize: 14, color: AppColors.darkTextSecondary)),
+              Text(
+                'Glad you\'re safe!',
+                style: TextStyle(
+                  fontFamily: 'Syne',
+                  fontSize: 14,
+                  color: AppColors.darkTextSecondary,
+                ),
+              ),
             ],
           ),
         ),
@@ -258,7 +290,11 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
         child: SafeArea(
           child: SingleChildScrollView(
             child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: size.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom),
+              constraints: BoxConstraints(
+                minHeight: size.height -
+                    MediaQuery.of(context).padding.top -
+                    MediaQuery.of(context).padding.bottom,
+              ),
               child: IntrinsicHeight(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -297,18 +333,24 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                                 shape: BoxShape.circle,
                                 color: AppColors.primary,
                               ),
-                              child: const Icon(Iconsax.warning_2, size: 60, color: Colors.white),
+                              child: const Icon(Iconsax.warning_2,
+                                  size: 60, color: Colors.white),
                             ),
                           ],
                         );
                       },
-                    ).animate().scale(delay: 100.ms, duration: 500.ms, curve: Curves.easeOutBack),
+                    ).animate().scale(
+                        delay: 100.ms,
+                        duration: 500.ms,
+                        curve: Curves.easeOutBack),
 
                     const SizedBox(height: 32),
 
                     // ── Title ────────────────────────────────────────────────
                     Text(
-                      _hasDispatched ? '🚑 AMBULANCE DISPATCHED' : '🚨 CRASH DETECTED',
+                      _hasDispatched
+                          ? '🚑 AMBULANCE DISPATCHED'
+                          : '🚨 CRASH DETECTED',
                       style: const TextStyle(
                         fontFamily: 'Syne',
                         fontSize: 24,
@@ -335,14 +377,15 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
 
                     const SizedBox(height: 20),
 
-                    // ── User Info Card (shown to hospital/ambulance) ──────────
+                    // ── User Info Card ────────────────────────────────────────
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       child: Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.06),
-                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                          border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.3)),
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Column(
@@ -358,7 +401,9 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                                   ),
                                   child: Center(
                                     child: Text(
-                                      userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+                                      userName.isNotEmpty
+                                          ? userName[0].toUpperCase()
+                                          : 'U',
                                       style: const TextStyle(
                                         fontFamily: 'Syne',
                                         fontSize: 18,
@@ -371,7 +416,8 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         userName,
@@ -408,7 +454,8 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                                       label: bloodGroup,
                                       color: AppColors.primary,
                                     ),
-                                  if (bloodGroup != null && vehiclePlate != null)
+                                  if (bloodGroup != null &&
+                                      vehiclePlate != null)
                                     const SizedBox(width: 8),
                                   if (vehiclePlate != null)
                                     _InfoChip(
@@ -440,7 +487,8 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                                 value: 1 - _countdownController.value,
                                 strokeWidth: 5,
                                 backgroundColor: AppColors.darkSurface3,
-                                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                                valueColor: const AlwaysStoppedAnimation(
+                                    AppColors.primary),
                               ),
                             ),
                           ),
@@ -471,8 +519,10 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                       Column(
                         children: [
                           const SizedBox(height: 10),
-                          const Icon(Iconsax.radar5, color: AppColors.primary, size: 50)
-                              .animate(onPlay: (controller) => controller.repeat())
+                          const Icon(Iconsax.radar5,
+                                  color: AppColors.primary, size: 50)
+                              .animate(
+                                  onPlay: (controller) => controller.repeat())
                               .shimmer(duration: 1500.ms, color: Colors.white),
                           const SizedBox(height: 12),
                           const Text(
@@ -503,10 +553,13 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                                   ? const SizedBox(
                                       width: 18,
                                       height: 18,
-                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      child: CircularProgressIndicator(
+                                          color: Colors.white, strokeWidth: 2))
                                   : const Icon(Iconsax.tick_circle, size: 20),
                               label: Text(
-                                _isCancelling ? 'Cancelling...' : "I'm OK — Cancel Alert",
+                                _isCancelling
+                                    ? 'Cancelling...'
+                                    : "I'm OK — Cancel Alert",
                                 style: const TextStyle(
                                   fontFamily: 'Syne',
                                   fontSize: 15,
@@ -516,12 +569,19 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.success,
                                 foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14)),
                                 elevation: 0,
                               ),
                             ),
-                          ).animate().slideY(begin: 0.2, end: 0, delay: 500.ms, duration: 400.ms).fadeIn(delay: 500.ms),
-
+                          )
+                              .animate()
+                              .slideY(
+                                  begin: 0.2,
+                                  end: 0,
+                                  delay: 500.ms,
+                                  duration: 400.ms)
+                              .fadeIn(delay: 500.ms),
                           if (!_hasDispatched) ...[
                             const SizedBox(height: 12),
                             SizedBox(
@@ -529,7 +589,8 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                               height: 58,
                               child: OutlinedButton.icon(
                                 onPressed: _triggerSOSNow,
-                                icon: const Icon(Iconsax.radar5, size: 20, color: AppColors.primary),
+                                icon: const Icon(Iconsax.radar5,
+                                    size: 20, color: AppColors.primary),
                                 label: const Text(
                                   'Trigger SOS Now',
                                   style: TextStyle(
@@ -540,11 +601,20 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                                   ),
                                 ),
                                 style: OutlinedButton.styleFrom(
-                                  side: const BorderSide(color: AppColors.primary, width: 1.5),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  side: const BorderSide(
+                                      color: AppColors.primary, width: 1.5),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14)),
                                 ),
                               ),
-                            ).animate().slideY(begin: 0.2, end: 0, delay: 600.ms, duration: 400.ms).fadeIn(delay: 600.ms),
+                            )
+                                .animate()
+                                .slideY(
+                                    begin: 0.2,
+                                    end: 0,
+                                    delay: 600.ms,
+                                    duration: 400.ms)
+                                .fadeIn(delay: 600.ms),
                           ],
                         ],
                       ),
@@ -567,7 +637,8 @@ class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
-  const _InfoChip({required this.icon, required this.label, required this.color});
+  const _InfoChip(
+      {required this.icon, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) => Container(
