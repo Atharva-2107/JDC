@@ -49,6 +49,12 @@ const io = new Server(httpServer, {
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
+// ── Hardware devices (ESP32) don't send an Origin header.
+//    Allow /api/crash and /api/health from any source so the ESP32
+//    can always reach the backend regardless of network origin.
+app.use('/api/crash', cors({ origin: '*' }));
+app.use('/api/health', cors({ origin: '*' }));
+
 // Attach io and supabase to every request
 app.use((req, _res, next) => {
   req.io = io;
@@ -132,9 +138,25 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
-  console.log(`\n🚨 JDC CrashGuard Server → http://localhost:${PORT}`);
-  console.log(`📡 Socket.io ready`);
-  console.log(`🔗 Supabase connected`);
-  console.log(`🌍 CORS allowed origins: ${allowedOrigins.join(', ')}\n`);
+httpServer.listen(PORT, '0.0.0.0', () => {
+  // Print all LAN IPs — use the correct one in your ESP32 BACKEND_CRASH_URL
+  import('os').then(({ networkInterfaces }) => {
+    const nets = networkInterfaces();
+    const lanIps = [];
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) lanIps.push(net.address);
+      }
+    }
+    console.log(`\n🚨 JDC CrashGuard Server → http://localhost:${PORT}`);
+    if (lanIps.length) {
+      console.log(`\n📡 ── ESP32 / Phone LAN access ──`);
+      lanIps.forEach(ip => console.log(`   http://${ip}:${PORT}/api/crash  ← use this IP in ESP32`));
+    }
+    console.log(`\n📡 Socket.io ready`);
+    console.log(`🔗 Supabase connected`);
+    console.log(`🌍 CORS allowed origins: ${allowedOrigins.join(', ')}\n`);
+  });
 });
+
+

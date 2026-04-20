@@ -44,7 +44,7 @@ export async function sendCrashAlertNotification(userId, incidentId, lat, lng) {
       },
       data: {
         type: 'crash_alert',
-        incident_id: incidentId,
+        incident_id: String(incidentId),
         lat: String(lat),
         lng: String(lng),
         click_action: 'FLUTTER_NOTIFICATION_CLICK',

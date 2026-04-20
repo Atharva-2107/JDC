@@ -77,7 +77,10 @@ router.post('/', async (req, res) => {
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            console.error('🔴 Supabase insert error:', JSON.stringify(error, null, 2));
+            return res.status(500).json({ success: false, message: 'Failed to create crash', supabaseError: error });
+        }
 
         // Do NOT broadcast new_crash to hospitals yet — we wait for /confirm
         console.log(`📋 Crash queued (pending_user): ${data.device_id} @ ${data.lat},${data.lng} [${data.severity}] id=${data.id}${data.is_demo ? ' — DEMO' : ''}`);
