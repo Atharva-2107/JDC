@@ -34,7 +34,6 @@ class CrashAlertScreen extends StatefulWidget {
 
 class _CrashAlertScreenState extends State<CrashAlertScreen>
     with TickerProviderStateMixin {
-  late AnimationController _pulseController;
   late AnimationController _countdownController;
   int _countdown = 15;
   Timer? _timer;
@@ -48,17 +47,12 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
 
   // ── Backend base URL (change the IP to your machine's LAN IP) ──────────────
   String get _backendBase => Platform.isAndroid
-      ? 'http://192.168.0.109:3001' // ← your PC's Wi-Fi IP on the same network
+      ? 'http://10.162.178.39:3001' // ← your PC's Wi-Fi IP on the same network
       : 'http://localhost:3001';
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-
     _countdownController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 15),
@@ -143,7 +137,7 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
             'lat': widget.latitude,
             'lng': widget.longitude,
           }),
-        );
+        ).timeout(const Duration(seconds: 5));
         debugPrint('Confirm response: ${response.statusCode} ${response.body}');
       } catch (e) {
         debugPrint('Failed to confirm crash to backend: $e');
@@ -190,7 +184,7 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
         final response = await http.post(
           Uri.parse('$_backendBase/api/crash/${widget.incidentId}/cancel'),
           headers: {'Content-Type': 'application/json'},
-        );
+        ).timeout(const Duration(seconds: 5));
         backendSuccess = response.statusCode == 200;
         debugPrint('Cancel response: ${response.statusCode}');
       } catch (e) {
@@ -228,7 +222,6 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
 
   @override
   void dispose() {
-    _pulseController.dispose();
     _countdownController.dispose();
     _timer?.cancel();
     super.dispose();
@@ -301,44 +294,23 @@ class _CrashAlertScreenState extends State<CrashAlertScreen>
                   children: [
                     const SizedBox(height: 32),
 
-                    // ── Pulsing Alert Icon ──────────────────────────────────
-                    AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (_, __) {
-                        return Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              width: 180 + (_pulseController.value * 40),
-                              height: 180 + (_pulseController.value * 40),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: AppColors.primary.withValues(
-                                    alpha: 0.08 * (1 - _pulseController.value)),
-                              ),
-                            ),
-                            Container(
-                              width: 140 + (_pulseController.value * 20),
-                              height: 140 + (_pulseController.value * 20),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: AppColors.primary.withValues(
-                                    alpha: 0.15 * (1 - _pulseController.value)),
-                              ),
-                            ),
-                            Container(
-                              width: 120,
-                              height: 120,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: AppColors.primary,
-                              ),
-                              child: const Icon(Iconsax.warning_2,
-                                  size: 60, color: Colors.white),
-                            ),
-                          ],
-                        );
-                      },
+                    // ── Alert Icon (static glow, no hover motion) ───────────
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.primary,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.45),
+                            blurRadius: 40,
+                            spreadRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Iconsax.warning_2,
+                          size: 60, color: Colors.white),
                     ).animate().scale(
                         delay: 100.ms,
                         duration: 500.ms,

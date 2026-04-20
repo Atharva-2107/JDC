@@ -56,7 +56,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         'phone': _phoneCtrl.text.trim(),
         'medical_notes': _medNotesCtrl.text.trim(),
         'blood_group': _bloodGroup.isNotEmpty ? _bloodGroup : null,
-        'gender': _gender.isNotEmpty ? _gender : null,
+        'gender': _gender.isNotEmpty ? _gender.toLowerCase() : null,
       }, onConflict: 'id');
 
       ref.invalidate(userProfileProvider);

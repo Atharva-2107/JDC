@@ -47,7 +47,7 @@ class MainShell extends StatelessWidget {
           ),
         ),
         child: SizedBox(
-          height: 64, // pure navigation content height
+          height: 66, // pure navigation content height
           child: Row(
             children: List.generate(_tabs.length, (i) {
               final tab = _tabs[i];

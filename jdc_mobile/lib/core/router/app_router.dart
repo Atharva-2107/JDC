@@ -92,7 +92,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!isLoggedIn && !isAuthRoute) return AppRoutes.login;
 
       // 3. Logged in but never done setup → go to setup wizard
-      if (isLoggedIn && !hasCompletedSetup && loc != AppRoutes.setup) {
+      if (isLoggedIn && !hasCompletedSetup &&
+          loc != AppRoutes.setup &&
+          loc != AppRoutes.crashAlert) {
         return AppRoutes.setup;
       }
 
